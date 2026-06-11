@@ -39,7 +39,9 @@ export function useRegister() {
         body: payload,
         auth: false,
       }),
-    onSuccess: () => router.push("/auth/verify-email"),
+    onSuccess: (data) => {
+      router.push("/auth/verify-email");
+    },
   });
 }
 

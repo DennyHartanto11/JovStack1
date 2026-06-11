@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ValidationPipe } from '@nestjs/common';
 import configuration from './config/configuration';
 import { validateEnv } from './config/validate-env';
@@ -26,6 +27,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate: validateEnv }),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 30 }]), // 30 requests per 60s global; auth endpoints override lower
     PrismaModule,
     MailModule,
     AuditLogModule,
@@ -45,6 +47,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
   providers: [
     // Authentication runs first (global); @Public() routes opt out.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     {
       provide: APP_PIPE,
       useValue: new ValidationPipe({

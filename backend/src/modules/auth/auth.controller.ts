@@ -9,6 +9,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
@@ -49,6 +50,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60 * 60 * 1000 } }) // 3 req / 1 hour
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   register(@Body() dto: RegisterDto) {
@@ -56,6 +58,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 15 * 60 * 1000 } }) // 5 req / 15 min
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
@@ -91,6 +94,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 2, ttl: 10 * 60 * 1000 } }) // 2 req / 10 min
   @Post('verify-email/resend')
   @HttpCode(HttpStatus.OK)
   resendVerify(@Body() dto: ResendVerifyDto) {
@@ -98,6 +102,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60 * 60 * 1000 } }) // 3 req / 1 hour
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   forgotPassword(@Body() dto: ForgotPasswordDto) {

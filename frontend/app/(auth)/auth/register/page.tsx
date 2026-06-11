@@ -19,6 +19,7 @@ export default function RegisterPage() {
         className="mt-8 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
+          if (register.isPending) return;
           register.mutate(form);
         }}
       >

@@ -20,6 +20,7 @@ export default function LoginPage() {
         className="mt-8 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
+          if (login.isPending) return;
           login.mutate({ email, password });
         }}
       >

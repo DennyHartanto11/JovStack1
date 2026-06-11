@@ -1,0 +1,79 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: jovstack-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-jovstack}
+    ports:
+      - '${DB_PORT:-5432}:5432'
+    volumes:
+      - jovstack_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-jovstack}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: jovstack-mailhog
+    restart: unless-stopped
+    ports:
+      - '${MAILHOG_SMTP_PORT:-1025}:1025' # SMTP
+      - '${MAILHOG_UI_PORT:-8025}:8025'   # Web UI
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jovstack-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 4000
+      API_PREFIX: api/v1
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-jovstack}?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access-secret}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-secret}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      JWT_ACTION_SECRET: ${JWT_ACTION_SECRET:-change-me-action-secret}
+      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-jov_rt}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-localhost}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PUBLIC_SITE_DOMAIN: ${PUBLIC_SITE_DOMAIN:-jovstack.app}
+      PUBLIC_SITE_BASE_URL: ${PUBLIC_SITE_BASE_URL:-http://localhost:4000/site}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      # Reach MailHog by its compose service name — NOT localhost (which would
+      # resolve to the api container itself).
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_IGNORE_TLS: ${SMTP_IGNORE_TLS:-true}
+      SMTP_REJECT_UNAUTHORIZED: ${SMTP_REJECT_UNAUTHORIZED:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-JovStack <no-reply@jovstack.app>}
+      MEDIA_MAX_SIZE_BYTES: ${MEDIA_MAX_SIZE_BYTES:-5242880}
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-http://localhost:4000/static}
+    ports:
+      - '${PORT:-4000}:4000'
+    volumes:
+      # Persist locally-stored uploaded media across restarts.
+      - jovstack_uploads:/app/uploads
+    # Apply pending migrations, then boot. Seed once manually:
+    #   docker compose exec api npm run db:seed
+    command: sh -c "npx prisma migrate deploy && node dist/main"
+
+volumes:
+  jovstack_pgdata:
+  jovstack_uploads:

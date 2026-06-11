@@ -1,0 +1,404 @@
+// JovStack — Prisma schema
+// Multi-tenant SaaS website builder. Every tenant-scoped row carries
+// an organizationId so the TenantGuard can enforce isolation.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── Enums ───────────────────────────────
+
+enum Role {
+  Owner
+  Admin
+  Editor
+  Viewer
+}
+
+enum InvitationStatus {
+  Pending
+  Accepted
+  Expired
+}
+
+enum PublicationState {
+  Live
+  Offline
+}
+
+enum BlockType {
+  Hero
+  Features
+  Gallery
+  Product
+  FAQ
+  Contact
+  Footer
+}
+
+enum MediaType {
+  Logo
+  Banner
+  Product
+  Gallery
+}
+
+enum OrderStatus {
+  New
+  Processing
+  Completed
+  Cancelled
+}
+
+enum LeadStatus {
+  New
+  Contacted
+  Closed
+}
+
+enum TokenType {
+  EmailVerification
+  PasswordReset
+}
+
+// ─────────────────────────────── Identity ───────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  avatarColor   String    @default("#6366f1")
+  avatarUrl     String?
+  emailVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+  actionTokens  ActionToken[]
+  auditLogs     AuditLog[]
+
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String // argon2 hash of the refresh token (rotation)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model ActionToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      TokenType
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, type])
+}
+
+// ─────────────────────────────── Tenant ───────────────────────────────
+
+model Organization {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  memberships     Membership[]
+  invitations     Invitation[]
+  websites        Website[]
+  mediaAssets     MediaAsset[]
+  categories      Category[]
+  sizeOptions     SizeOption[]
+  products        Product[]
+  orders          Order[]
+  leads           Lead[]
+  auditLogs       AuditLog[]
+
+  @@index([slug])
+}
+
+model Membership {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           Role         @default(Viewer)
+  joinedAt       DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Invitation {
+  id             String           @id @default(uuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           Role
+  status         InvitationStatus @default(Pending)
+  tokenHash      String
+  sentAt         DateTime         @default(now())
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+// ─────────────────────────────── Website builder ───────────────────────────────
+
+model Website {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String       @unique // -> {slug}.jovstack.app (unique per platform)
+  seoTitle       String       @default("")
+  seoDescription String       @default("")
+  // Storefront theme (ThemeSettings) edited from the dashboard and applied by
+  // the public-site renderer. Free-form JSON owned by the frontend contract.
+  themeJson      Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  pages       Page[]
+  publication Publication?
+  leads       Lead[]
+  orders      Order[]
+
+  @@index([organizationId])
+  @@index([slug])
+}
+
+model Publication {
+  id          String           @id @default(uuid())
+  websiteId   String           @unique
+  website     Website          @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  state       PublicationState @default(Offline)
+  publishedAt DateTime?
+  updatedAt   DateTime         @updatedAt
+}
+
+model Page {
+  id        String   @id @default(uuid())
+  websiteId String
+  website   Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  blocks Block[]
+
+  @@index([websiteId])
+}
+
+model Block {
+  id        String    @id @default(uuid())
+  pageId    String
+  page      Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type      BlockType
+  title     String
+  order     Int       @default(0)
+  config    Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([pageId])
+}
+
+// ─────────────────────────────── Media ───────────────────────────────
+
+model MediaAsset {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  url            String
+  type           MediaType
+  sizeBytes      Int
+  uploadedAt     DateTime     @default(now())
+
+  products Product[]
+
+  @@index([organizationId])
+  @@index([organizationId, type])
+}
+
+// ─────────────────────────────── Catalog ───────────────────────────────
+
+model Category {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  createdAt      DateTime     @default(now())
+
+  products Product[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// Org-defined, reusable size labels (e.g. S, M, L, 42, "One Size") that
+// product variants pick from. Managed like categories.
+model SizeOption {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  label          String
+  order          Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  variants ProductVariant[]
+
+  @@unique([organizationId, label])
+  @@index([organizationId])
+}
+
+model Product {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String       @default("")
+  price          Int          @default(0) // IDR integer, no decimals
+  categoryId     String?
+  category       Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  imageId        String?
+  image          MediaAsset?  @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  seoTitle       String       @default("")
+  seoDescription String       @default("")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  variants   ProductVariant[]
+  orderItems OrderItem[]
+
+  @@index([organizationId])
+  @@index([categoryId])
+}
+
+// A purchasable size of a product with its own stock. Stock is tracked here,
+// per size, not on the product.
+model ProductVariant {
+  id            String      @id @default(uuid())
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sizeOptionId  String?
+  sizeOption    SizeOption? @relation(fields: [sizeOptionId], references: [id], onDelete: SetNull)
+  size          String // denormalized label snapshot (survives size-option deletion)
+  sku           String?
+  priceOverride Int? // optional per-size price; falls back to Product.price
+  stock         Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  orderItems OrderItem[]
+
+  @@unique([productId, size])
+  @@index([productId])
+}
+
+// ─────────────────────────────── Commerce ───────────────────────────────
+
+model Order {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  websiteId      String?
+  website        Website?     @relation(fields: [websiteId], references: [id], onDelete: SetNull)
+  code           String       @unique // human-friendly e.g. ORD-001
+  customer       String
+  email          String? // customer email (public checkout)
+  phone          String // E.164 for WhatsApp checkout link
+  address        String? // shipping address (public checkout)
+  paymentMethod  String? // free-form, e.g. "WhatsApp", "Transfer"
+  total          Int          @default(0)
+  status         OrderStatus  @default(New)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  items OrderItem[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+model OrderItem {
+  id        String          @id @default(uuid())
+  orderId   String
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  name      String
+  size      String? // size label snapshot at order time
+  price     Int
+  quantity  Int             @default(1)
+
+  @@index([orderId])
+}
+
+// ─────────────────────────────── Leads ───────────────────────────────
+
+model Lead {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  websiteId      String?
+  website        Website?     @relation(fields: [websiteId], references: [id], onDelete: SetNull)
+  name           String
+  email          String
+  message        String
+  status         LeadStatus   @default(New)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+// ─────────────────────────────── Audit ───────────────────────────────
+
+model AuditLog {
+  id             String        @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action         String // e.g. website.publish
+  entity         String // e.g. Website
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+}

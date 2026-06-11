@@ -1,0 +1,687 @@
+=========================================================
+JOVSTACK
+API CONTRACT & PRISMA SCHEMA SPECIFICATION
+Version 1.1
+Status: Approved for Implementation
+=========================================================
+
+PROJECT
+-------
+JovStack
+
+TYPE
+----
+Multi-Tenant SaaS Platform
+Website Builder
+Basic Commerce
+
+ARCHITECTURE
+------------
+Modular Monolith
+NestJS
+Prisma ORM
+PostgreSQL
+Shared Schema Multi-Tenant
+
+TENANT MODEL
+------------
+One User
+-> Many Organizations
+-> Many Websites
+
+Tenant Isolation:
+organization_id
+
+RBAC
+----
+Owner
+Admin
+Editor
+Viewer
+
+=========================================================
+CHANGE LOG v1.1
+=========================================================
+
+ADDED
+
+- EmailVerificationToken
+- PasswordResetToken
+- Website SEO Fields
+- Product SEO Fields
+- ContactRequest.websiteId
+- MediaAsset.deletedAt
+
+UPDATED
+
+- User
+- Website
+- Product
+- MediaAsset
+- ContactRequest
+
+PURPOSE
+
+- Complete authentication lifecycle
+- Complete password recovery lifecycle
+- SEO readiness
+- Lead attribution
+- Production readiness
+- Soft delete consistency
+
+=========================================================
+USER
+=========================================================
+
+model User {
+
+  id              String @id @default(uuid())
+  email           String @unique
+  name            String?
+
+  passwordHash    String
+
+  status          UserStatus
+
+  emailVerifiedAt DateTime?
+
+  createdAt       DateTime
+  updatedAt       DateTime
+
+  memberships             Membership[]
+  refreshTokens           RefreshToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  auditLogs               AuditLog[]
+
+}
+
+PURPOSE
+
+- Authentication
+- Identity Management
+- Ownership
+
+=========================================================
+EMAIL VERIFICATION TOKEN
+=========================================================
+
+Supports
+
+FR-102 Verify Email
+
+model EmailVerificationToken {
+
+  id        String @id @default(uuid())
+
+  userId    String
+
+  token     String @unique
+
+  expiresAt DateTime
+
+  createdAt DateTime
+
+  user User
+
+}
+
+RULES
+
+- Token stored as hash
+- Single use
+- Expiration enforced
+- Deleted after verification
+
+=========================================================
+PASSWORD RESET TOKEN
+=========================================================
+
+Supports
+
+FR-105 Forgot Password
+FR-106 Reset Password
+
+model PasswordResetToken {
+
+  id        String @id @default(uuid())
+
+  userId    String
+
+  token     String @unique
+
+  expiresAt DateTime
+
+  createdAt DateTime
+
+  user User
+
+}
+
+RULES
+
+- Single use
+- Token hash only
+- Invalidated after reset
+
+=========================================================
+REFRESH TOKEN
+=========================================================
+
+model RefreshToken {
+
+  id          String @id @default(uuid())
+
+  userId      String
+
+  tokenHash   String
+
+  ipAddress   String?
+
+  userAgent   String?
+
+  expiresAt   DateTime
+
+  revokedAt   DateTime?
+
+  createdAt   DateTime
+
+}
+
+PURPOSE
+
+- Multi Device Login
+- Refresh Rotation
+- Session Revocation
+
+=========================================================
+ORGANIZATION
+=========================================================
+
+model Organization {
+
+  id          String @id @default(uuid())
+
+  name        String
+
+  slug        String
+
+  status      OrganizationStatus
+
+  createdAt   DateTime
+
+  deletedAt   DateTime?
+
+}
+
+PURPOSE
+
+Tenant Root Aggregate
+
+=========================================================
+MEMBERSHIP
+=========================================================
+
+model Membership {
+
+  id              String @id @default(uuid())
+
+  userId          String
+
+  organizationId  String
+
+  role            Role
+
+}
+
+ROLES
+
+- Owner
+- Admin
+- Editor
+- Viewer
+
+=========================================================
+WEBSITE
+=========================================================
+
+model Website {
+
+  id              String @id @default(uuid())
+
+  organizationId  String
+
+  templateId      String?
+
+  slug            String
+
+  name            String
+
+  status          WebsiteStatus
+
+  seoTitle        String?
+
+  seoDescription  String?
+
+  createdAt       DateTime
+
+  deletedAt       DateTime?
+
+}
+
+RELATIONS
+
+- Pages
+- Publication
+- Orders
+- Carts
+- ContactRequests
+
+CONSTRAINT
+
+UNIQUE
+(organizationId, slug)
+
+=========================================================
+PAGE
+=========================================================
+
+model Page {
+
+  id          String @id @default(uuid())
+
+  websiteId   String
+
+  title       String
+
+  slug        String
+
+  status      PageStatus
+
+}
+
+=========================================================
+BLOCK
+=========================================================
+
+model Block {
+
+  id          String @id @default(uuid())
+
+  pageId      String
+
+  type        BlockType
+
+  content     Json
+
+  position    Int
+
+}
+
+SUPPORTED BLOCKS
+
+- Hero
+- Features
+- Gallery
+- Product
+- FAQ
+- Contact
+- Footer
+
+=========================================================
+PUBLICATION
+=========================================================
+
+model Publication {
+
+  id          String @id @default(uuid())
+
+  websiteId   String
+
+  subdomain   String
+
+  status      PublicationStatus
+
+  publishedAt DateTime?
+
+}
+
+EXAMPLE
+
+tokobudi.jovstack.app
+
+=========================================================
+CATEGORY
+=========================================================
+
+model Category {
+
+  id              String @id @default(uuid())
+
+  organizationId  String
+
+  name            String
+
+}
+
+=========================================================
+PRODUCT
+=========================================================
+
+model Product {
+
+  id              String @id @default(uuid())
+
+  organizationId  String
+
+  categoryId      String?
+
+  name            String
+
+  description     String?
+
+  price           Decimal
+
+  status          ProductStatus
+
+  seoTitle        String?
+
+  seoDescription  String?
+
+  createdAt       DateTime
+
+  deletedAt       DateTime?
+
+}
+
+RELATIONS
+
+- ProductVariant
+- ProductImage
+- CartItem
+- OrderItem
+
+=========================================================
+PRODUCT VARIANT
+=========================================================
+
+model ProductVariant {
+
+  id          String @id @default(uuid())
+
+  productId   String
+
+  sku         String
+
+  stock       Int
+
+  price       Decimal?
+
+}
+
+=========================================================
+PRODUCT IMAGE
+=========================================================
+
+model ProductImage {
+
+  id            String @id @default(uuid())
+
+  productId     String
+
+  mediaAssetId  String
+
+}
+
+=========================================================
+MEDIA ASSET
+=========================================================
+
+model MediaAsset {
+
+  id              String @id @default(uuid())
+
+  organizationId  String
+
+  storageKey      String
+
+  mimeType        String
+
+  sizeBytes       Int
+
+  createdAt       DateTime
+
+  deletedAt       DateTime?
+
+}
+
+PURPOSE
+
+- Logo
+- Banner
+- Gallery
+- Product Images
+
+=========================================================
+CART
+=========================================================
+
+model Cart {
+
+  id              String @id @default(uuid())
+
+  organizationId  String
+
+  websiteId       String
+
+  sessionId       String
+
+  createdAt       DateTime
+
+}
+
+=========================================================
+CART ITEM
+=========================================================
+
+model CartItem {
+
+  id          String @id @default(uuid())
+
+  cartId      String
+
+  productId   String
+
+  quantity    Int
+
+}
+
+=========================================================
+ORDER
+=========================================================
+
+model Order {
+
+  id              String @id @default(uuid())
+
+  organizationId  String
+
+  websiteId       String
+
+  customerName    String
+
+  customerEmail   String
+
+  customerPhone   String
+
+  totalAmount     Decimal
+
+  status          OrderStatus
+
+  createdAt       DateTime
+
+}
+
+=========================================================
+ORDER ITEM
+=========================================================
+
+model OrderItem {
+
+  id            String @id @default(uuid())
+
+  orderId       String
+
+  productId     String?
+
+  nameSnapshot  String
+
+  unitPrice     Decimal
+
+  quantity      Int
+
+}
+
+PURPOSE
+
+Immutable Snapshot
+
+=========================================================
+CONTACT REQUEST
+=========================================================
+
+model ContactRequest {
+
+  id              String @id @default(uuid())
+
+  organizationId  String
+
+  websiteId       String?
+
+  name            String
+
+  subject         String
+
+  email           String
+
+  phone           String?
+
+  message         String
+
+  status          ContactRequestStatus
+
+  createdAt       DateTime
+
+}
+
+PURPOSE
+
+- Lead Capture
+- Contact Form
+- Multi Website Attribution
+
+=========================================================
+AUDIT LOG
+=========================================================
+
+model AuditLog {
+
+  id              String @id @default(uuid())
+
+  organizationId  String?
+
+  actorUserId     String
+
+  action          String
+
+  targetType      String
+
+  targetId        String
+
+  metadata        Json?
+
+  ipAddress       String?
+
+  userAgent       String?
+
+  createdAt       DateTime
+
+}
+
+PURPOSE
+
+- Security
+- Compliance
+- Investigation
+
+=========================================================
+SOFT DELETE ENTITIES
+=========================================================
+
+Organization
+Website
+Product
+MediaAsset
+
+Field
+
+deletedAt
+
+=========================================================
+TENANT ISOLATION RULES
+=========================================================
+
+All tenant-owned entities MUST contain:
+
+organization_id
+
+Enforcement
+
+1. Middleware
+2. Repository Filter
+3. PostgreSQL RLS
+
+=========================================================
+AUTHENTICATION FLOW
+=========================================================
+
+Register
+→ Verify Email
+→ Login
+→ Access Token
+→ Refresh Token
+→ Logout
+
+=========================================================
+MVP COMMERCE FLOW
+=========================================================
+
+Product Listing
+→ Product Detail
+→ Cart
+→ Checkout
+→ Create Order
+→ WhatsApp Checkout
+
+=========================================================
+STATUS
+=========================================================
+
+PRD                        APPROVED
+FRD                        APPROVED
+NFR                        APPROVED
+Architecture               APPROVED
+Tenant Model               APPROVED
+RBAC                       APPROVED
+Domain Model               APPROVED
+ERD v1.1                   APPROVED
+API Contract v1.1          APPROVED
+Prisma Schema v1.1         APPROVED
+
+PROJECT STATUS
+
+READY FOR IMPLEMENTATION
+
+=========================================================
+END OF DOCUMENT
+=========================================================

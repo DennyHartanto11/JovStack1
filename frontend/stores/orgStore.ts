@@ -29,7 +29,10 @@ export const useOrgStore = create<OrgState>()(
     }),
     {
       name: "jovstack-org",
-      partialize: (s) => ({ activeOrg: s.activeOrg }),
+      partialize: (s) => ({
+        activeOrg: s.activeOrg,
+        organizations: s.organizations,
+      }),
     }
   )
 );

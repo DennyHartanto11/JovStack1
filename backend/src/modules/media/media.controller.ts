@@ -35,7 +35,11 @@ export class MediaController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Roles(...EDITOR_PLUS)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
+    }),
+  )
   upload(
     @CurrentOrg('organizationId') orgId: string,
     @CurrentUser('id') userId: string,
